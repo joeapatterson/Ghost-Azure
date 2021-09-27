@@ -1,17 +1,10 @@
-{
-    "database": {
-        "client": "sqlite3",
-        "connection": {
-            "filename": "content/data/ghost.db"
-        },
-        "debug": false
-    },
-    "paths": {
-        "contentPath": "content/"
-    },
-    "caching": {
-		"frontend": {
-			"maxAge": 600
-		}
-	}
+"database": {
+  "client": "mysql",
+  "connection": {
+    "host": "az-uks-prd-mysqlsvr.mysql.database.azure.com",
+    "port": 3306,
+    "user": "joe",
+    "password": "Test123456789",
+    "database": "proddb"
+  }
 }
