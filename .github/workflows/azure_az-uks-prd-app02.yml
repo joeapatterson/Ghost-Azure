@@ -21,6 +21,7 @@ jobs:
         with:
           dotnet-version: '5.0.x'
           include-prerelease: true
+          url: https://docs.microsoft.com/en-us/azure/devops/pipelines/create-first-pipeline?view=azure-devops&tabs=net%2Cyaml%2Cbrowser%2Ctfs-2018-2
 
       - name: Build with dotnet
         run: dotnet build --configuration Release
