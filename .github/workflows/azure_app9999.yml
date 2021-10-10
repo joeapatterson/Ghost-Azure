@@ -10,17 +10,14 @@ on:
   workflow_dispatch:
 
 jobs:
-   deploy:
-    runs-on: windows-latest
-    
-   build:
-    runs-on: windows-latest
-
-    environment:
+  environment:
       name: 'Production'
       url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
-
-    steps:
+      
+build:
+runs-on: windows-latest
+  steps:
+      - run: https://github.com/joeapatterson/Ghost-Azure/blob/azure/deploy.cmd    
       - name: Download artifact from build job
         uses: actions/download-artifact@v2
         with:
