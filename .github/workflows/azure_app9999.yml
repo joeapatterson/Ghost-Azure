@@ -5,11 +5,7 @@ name: Reusable workflow example
 
 on
 
-jobs:
-  environment:
-    name: 'Production'
-    url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
-    
+  
   build:
     runs-on: windows-latest
     steps:
