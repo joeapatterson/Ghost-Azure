@@ -1,2 +1,2 @@
 [config]
-command = ./ghost.js
+command = deploy.cmd
