@@ -1,2 +1,2 @@
 [config]
-command = ./ghost
+command = ./ghost.js
