@@ -85,6 +85,10 @@ module.exports = {
         return shared.pipeline(require('./members'), localUtils);
     },
 
+    get offers() {
+        return shared.pipeline(require('./offers'), localUtils);
+    },
+
     get products() {
         return shared.pipeline(require('./products'), localUtils);
     },
@@ -99,6 +103,14 @@ module.exports = {
 
     get images() {
         return shared.pipeline(require('./images'), localUtils);
+    },
+
+    get media() {
+        return shared.pipeline(require('./media'), localUtils);
+    },
+
+    get files() {
+        return shared.pipeline(require('./files'), localUtils);
     },
 
     get tags() {
@@ -151,6 +163,10 @@ module.exports = {
 
     get snippets() {
         return shared.pipeline(require('./snippets'), localUtils);
+    },
+
+    get customThemeSettings() {
+        return shared.pipeline(require('./custom-theme-settings'), localUtils);
     },
 
     get serializers() {

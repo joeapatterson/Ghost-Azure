@@ -4,7 +4,7 @@ const uuid = require('uuid');
 const moment = require('moment');
 const Promise = require('bluebird');
 const {sequence} = require('@tryghost/promise');
-const i18n = require('../../shared/i18n');
+const tpl = require('@tryghost/tpl');
 const errors = require('@tryghost/errors');
 const nql = require('@nexes/nql');
 const htmlToPlaintext = require('../../shared/html-to-plaintext');
@@ -15,6 +15,13 @@ const limitService = require('../services/limits');
 const mobiledocLib = require('../lib/mobiledoc');
 const relations = require('./relations');
 const urlUtils = require('../../shared/url-utils');
+
+const messages = {
+    isAlreadyPublished: 'Your post is already published, please reload your page.',
+    valueCannotBeBlank: 'Value in {key} cannot be blank.',
+    expectedPublishedAtInFuture: 'Date must be at least {cannotScheduleAPostBeforeInMinutes} minutes in the future.',
+    untitled: '(Untitled)'
+};
 
 const MOBILEDOC_REVISIONS_COUNT = 10;
 const ALL_STATUSES = ['published', 'draft', 'scheduled', 'sent'];
@@ -47,9 +54,20 @@ Post = ghostBookshelf.Model.extend({
      */
     defaults: function defaults() {
         let visibility = 'public';
-
-        if (settingsCache.get('default_content_visibility')) {
-            visibility = settingsCache.get('default_content_visibility');
+        let tiers = [];
+        const defaultContentVisibility = settingsCache.get('default_content_visibility');
+        if (defaultContentVisibility) {
+            if (defaultContentVisibility === 'tiers') {
+                const tiersData = settingsCache.get('default_content_visibility_tiers') || [];
+                visibility = 'tiers',
+                tiers = tiersData.map((tierId) => {
+                    return {
+                        id: tierId
+                    };
+                });
+            } else if (defaultContentVisibility !== 'tiers') {
+                visibility = settingsCache.get('default_content_visibility');
+            }
         }
 
         return {
@@ -57,16 +75,18 @@ Post = ghostBookshelf.Model.extend({
             status: 'draft',
             featured: false,
             type: 'post',
+            tiers,
             visibility: visibility,
             email_recipient_filter: 'none'
         };
     },
 
-    relationships: ['tags', 'authors', 'mobiledoc_revisions', 'posts_meta'],
+    relationships: ['tags', 'authors', 'mobiledoc_revisions', 'posts_meta', 'tiers'],
 
     // NOTE: look up object, not super nice, but was easy to implement
     relationshipBelongsTo: {
         tags: 'tags',
+        tiers: 'products',
         authors: 'users',
         posts_meta: 'posts_meta'
     },
@@ -80,6 +100,17 @@ Post = ghostBookshelf.Model.extend({
             targetTableName: 'emails',
             foreignKey: 'post_id'
         }
+    },
+
+    tiers() {
+        return this.belongsToMany('Product', 'posts_products', 'post_id', 'product_id')
+            .withPivot('sort_order')
+            .query('orderBy', 'sort_order', 'ASC')
+            .query((qb) => {
+                // avoids bookshelf adding a `DISTINCT` to the query
+                // we know the result set will already be unique and DISTINCT hurts query performance
+                qb.columns('products.*');
+            });
     },
 
     parse() {
@@ -164,7 +195,7 @@ Post = ghostBookshelf.Model.extend({
 
         // transform visibility NQL queries to special-case values where necessary
         // ensures checks against special-case values such as `{{#has visibility="paid"}}` continue working
-        if (attrs.visibility && !['public', 'members', 'paid'].includes(attrs.visibility)) {
+        if (attrs.visibility && !['public', 'members', 'paid', 'tiers'].includes(attrs.visibility)) {
             if (attrs.visibility === 'status:-free') {
                 attrs.visibility = 'paid';
             } else {
@@ -301,7 +332,7 @@ Post = ghostBookshelf.Model.extend({
      * bookshelf-relations listens on `created` + `updated`.
      * We ensure that we are catching the event after bookshelf relations.
      */
-    onSaved: function onSaved(model, response, options) {
+    onSaved: function onSaved(model, options) {
         ghostBookshelf.Model.prototype.onSaved.apply(this, arguments);
 
         if (options.method !== 'insert') {
@@ -317,7 +348,7 @@ Post = ghostBookshelf.Model.extend({
         }
     },
 
-    onUpdated: function onUpdated(model, attrs, options) {
+    onUpdated: function onUpdated(model, options) {
         ghostBookshelf.Model.prototype.onUpdated.apply(this, arguments);
 
         model.statusChanging = model.get('status') !== model.previous('status');
@@ -481,7 +512,7 @@ Post = ghostBookshelf.Model.extend({
         // @TODO: remove when we have versioning based on updated_at
         if (newStatus !== olderStatus && newStatus === 'scheduled' && olderStatus === 'published') {
             return Promise.reject(new errors.ValidationError({
-                message: i18n.t('errors.models.post.isAlreadyPublished', {key: 'status'})
+                message: tpl(messages.isAlreadyPublished, {key: 'status'})
             }));
         }
 
@@ -495,11 +526,11 @@ Post = ghostBookshelf.Model.extend({
         if (newStatus === 'scheduled') {
             if (!publishedAt) {
                 return Promise.reject(new errors.ValidationError({
-                    message: i18n.t('errors.models.post.valueCannotBeBlank', {key: 'published_at'})
+                    message: tpl(messages.valueCannotBeBlank, {key: 'published_at'})
                 }));
             } else if (!moment(publishedAt).isValid()) {
                 return Promise.reject(new errors.ValidationError({
-                    message: i18n.t('errors.models.post.valueCannotBeBlank', {key: 'published_at'})
+                    message: tpl(messages.valueCannotBeBlank, {key: 'published_at'})
                 }));
                 // CASE: to schedule/reschedule a post, a minimum diff of x minutes is needed (default configured is 2minutes)
             } else if (
@@ -509,7 +540,7 @@ Post = ghostBookshelf.Model.extend({
                 (!options.context || !options.context.internal)
             ) {
                 return Promise.reject(new errors.ValidationError({
-                    message: i18n.t('errors.models.post.expectedPublishedAtInFuture', {
+                    message: tpl(messages.expectedPublishedAtInFuture, {
                         cannotScheduleAPostBeforeInMinutes: config.get('times').cannotScheduleAPostBeforeInMinutes
                     })
                 }));
@@ -610,7 +641,7 @@ Post = ghostBookshelf.Model.extend({
 
         // disabling sanitization until we can implement a better version
         if (!options.importing) {
-            title = this.get('title') || i18n.t('errors.models.post.untitled');
+            title = this.get('title') || tpl(messages.untitled);
             this.set('title', _.toString(title).trim());
         }
 
@@ -654,7 +685,8 @@ Post = ghostBookshelf.Model.extend({
 
         // NOTE: this is a stopgap solution for email-only posts where their status is unchanged after publish
         //       but the usual publis/send newsletter flow continues
-        if (model.related('posts_meta').get('email_only') && (newStatus === 'published') && this.hasChanged('status')) {
+        const hasEmailOnlyFlag = _.get(attrs, 'posts_meta.email_only') || model.related('posts_meta').get('email_only');
+        if (hasEmailOnlyFlag && (newStatus === 'published') && this.hasChanged('status')) {
             this.set('status', 'sent');
         }
 
@@ -1204,7 +1236,7 @@ Post = ghostBookshelf.Model.extend({
         }
 
         return Promise.reject(new errors.NoPermissionError({
-            message: i18n.t('errors.models.post.notEnoughPermission')
+            message: tpl(messages.notEnoughPermission)
         }));
     }
 });

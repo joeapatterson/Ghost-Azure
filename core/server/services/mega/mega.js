@@ -6,7 +6,6 @@ const url = require('url');
 const moment = require('moment');
 const ObjectID = require('bson-objectid');
 const errors = require('@tryghost/errors');
-const i18n = require('../../../shared/i18n');
 const logging = require('@tryghost/logging');
 const settingsCache = require('../../../shared/settings-cache');
 const membersService = require('../members');
@@ -17,7 +16,6 @@ const db = require('../../data/db');
 const models = require('../../models');
 const postEmailSerializer = require('./post-email-serializer');
 const {getSegmentsFromHtml} = require('./segment-parser');
-const labs = require('../../../shared/labs');
 
 // Used to listen to email.added and email.edited model events originally, I think to offload this - ideally would just use jobs now if possible
 const events = require('../../lib/common/events');
@@ -26,7 +24,8 @@ const messages = {
     invalidSegment: 'Invalid segment value. Use one of the valid:"status:free" or "status:-free" values.',
     unexpectedFilterError: 'Unexpected {property} value "{value}", expected an NQL equivalent',
     noneFilterError: 'Cannot send email to "none" {property}',
-    emailSendingDisabled: `Email sending is temporarily disabled because your account is currently in review. You should have an email about this from us already, but you can also reach us any time at support@ghost.org`
+    emailSendingDisabled: `Email sending is temporarily disabled because your account is currently in review. You should have an email about this from us already, but you can also reach us any time at support@ghost.org`,
+    sendEmailRequestFailed: 'The email service was unable to send an email batch.'
 };
 
 const getFromAddress = () => {
@@ -74,16 +73,15 @@ const getEmailData = async (postModel, options) => {
  * @param {Object} postModel - post model instance
  * @param {[string]} toEmails - member email addresses to send email to
  * @param {ValidAPIVersion} apiVersion - api version to be used when serializing email data
- * @param {ValidMemberSegment} memberSegment
+ * @param {ValidMemberSegment} [memberSegment]
  */
 const sendTestEmail = async (postModel, toEmails, apiVersion, memberSegment) => {
     let emailData = await getEmailData(postModel, {apiVersion});
     emailData.subject = `[Test] ${emailData.subject}`;
 
-    if (labs.isSet('emailCardSegments') && memberSegment) {
+    if (memberSegment) {
         emailData = postEmailSerializer.renderEmailForSegment(emailData, memberSegment);
     }
-
     // fetch any matching members so that replacements use expected values
     const recipients = await Promise.all(toEmails.map(async (email) => {
         const member = await membersService.api.members.get({email});
@@ -109,6 +107,14 @@ const sendTestEmail = async (postModel, toEmails, apiVersion, memberSegment) => 
         return Promise.reject(response.error);
     }
 
+    if (response && response[0] && response[0].error) {
+        return Promise.reject(new errors.EmailError({
+            statusCode: response[0].error.statusCode,
+            message: response[0].error.message,
+            context: response[0].error.originalMessage
+        }));
+    }
+
     return response;
 };
 
@@ -125,7 +131,7 @@ const transformEmailRecipientFilter = (emailRecipientFilter, {errorProperty = 'e
     // `paid` and `free` were swapped out for NQL filters in 4.5.0, we shouldn't see them here now
     case 'paid':
     case 'free':
-        throw new errors.GhostError({
+        throw new errors.InternalServerError({
             message: tpl(messages.unexpectedFilterError, {
                 property: errorProperty,
                 value: emailRecipientFilter
@@ -134,7 +140,7 @@ const transformEmailRecipientFilter = (emailRecipientFilter, {errorProperty = 'e
     case 'all':
         return 'subscribed:true';
     case 'none':
-        throw new errors.GhostError({
+        throw new errors.InternalServerError({
             message: tpl(messages.noneFilterError, {
                 property: errorProperty
             })
@@ -346,9 +352,9 @@ async function sendEmailJob({emailModel, options}) {
             error: errorMessage
         }, {patch: true});
 
-        throw new errors.GhostError({
+        throw new errors.InternalServerError({
             err: error,
-            context: i18n.t('errors.services.mega.requestFailed.error')
+            context: tpl(messages.sendEmailRequestFailed)
         });
     }
 }
@@ -410,7 +416,9 @@ function partitionMembersBySegment(memberRows, segments) {
             segmentedMemberRows = memberRows.filter(member => member.status !== 'free');
             memberRows = memberRows.filter(member => member.status === 'free');
         } else {
-            throw new errors.ValidationError(tpl(messages.invalidSegment));
+            throw new errors.ValidationError({
+                message: tpl(messages.invalidSegment)
+            });
         }
 
         partitions[memberSegment] = segmentedMemberRows;
@@ -437,28 +445,26 @@ async function createSegmentedEmailBatches({emailModel, options}) {
         return [];
     }
 
-    if (labs.isSet('emailCardSegments')) {
-        const segments = getSegmentsFromHtml(emailModel.get('html'));
-        const batchIds = [];
+    const segments = getSegmentsFromHtml(emailModel.get('html'));
+    const batchIds = [];
 
-        if (segments.length) {
-            const partitionedMembers = partitionMembersBySegment(memberRows, segments);
+    if (segments.length) {
+        const partitionedMembers = partitionMembersBySegment(memberRows, segments);
 
-            for (const partition in partitionedMembers) {
-                const emailBatchIds = await createEmailBatches({
-                    emailModel,
-                    memberRows: partitionedMembers[partition],
-                    memberSegment: partition === 'unsegmented' ? null : partition,
-                    options
-                });
-                batchIds.push(emailBatchIds);
-            }
-            return batchIds;
+        for (const partition in partitionedMembers) {
+            const emailBatchIds = await createEmailBatches({
+                emailModel,
+                memberRows: partitionedMembers[partition],
+                memberSegment: partition === 'unsegmented' ? null : partition,
+                options
+            });
+            batchIds.push(emailBatchIds);
         }
+    } else {
+        const emailBatchIds = await createEmailBatches({emailModel, memberRows, options});
+        batchIds.push(emailBatchIds);
     }
 
-    const emailBatchIds = await createEmailBatches({emailModel, memberRows, options});
-    const batchIds = [emailBatchIds];
     return batchIds;
 }
 

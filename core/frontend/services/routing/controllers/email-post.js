@@ -1,6 +1,6 @@
 const debug = require('@tryghost/debug')('services:routing:controllers:emailpost');
 const config = require('../../../../shared/config');
-const urlService = require('../../url');
+const {routerManager} = require('../');
 const urlUtils = require('../../../../shared/url-utils');
 const helpers = require('../helpers');
 
@@ -17,8 +17,8 @@ module.exports = function emailPostController(req, res, next) {
     const api = require('../../proxy').api[res.locals.apiVersion];
 
     const params = {
-        slug: req.params.slug,
-        include: 'authors,tags',
+        uuid: req.params.uuid,
+        include: 'authors,tags,tiers',
         context: {
             member: res.locals.member
         }
@@ -48,7 +48,7 @@ module.exports = function emailPostController(req, res, next) {
             }
 
             if (post.status === 'published') {
-                return urlUtils.redirect301(res, urlService.getUrlByResourceId(post.id, {withSubdirectory: true}));
+                return urlUtils.redirect301(res, routerManager.getUrlByResourceId(post.id, {withSubdirectory: true}));
             }
 
             if (res.locals.apiVersion !== 'v0.1' && res.locals.apiVersion !== 'v2') {

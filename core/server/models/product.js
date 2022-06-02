@@ -4,10 +4,20 @@ const _ = require('lodash');
 const Product = ghostBookshelf.Model.extend({
     tableName: 'products',
 
+    defaults: {
+        active: true
+    },
+
     relationships: ['benefits'],
 
     relationshipBelongsTo: {
         benefits: 'benefits'
+    },
+
+    applyCustomQuery() {
+        this.query((qb) => {
+            qb.leftJoin('stripe_prices', 'products.monthly_price_id', 'stripe_prices.id');
+        });
     },
 
     async onSaving(model, _attr, options) {
@@ -120,6 +130,10 @@ const Product = ghostBookshelf.Model.extend({
 
     members() {
         return this.belongsToMany('Member', 'members_products', 'product_id', 'member_id');
+    }
+}, {
+    orderDefaultRaw() {
+        return 'stripe_prices.amount asc';
     }
 });
 

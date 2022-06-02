@@ -78,6 +78,11 @@ const Member = ghostBookshelf.Model.extend({
         email_recipients: 'email_recipients'
     },
 
+    productEvents() {
+        return this.hasMany('MemberProductEvent', 'member_id', 'id')
+            .query('orderBy', 'created_at', 'DESC');
+    },
+
     products() {
         return this.belongsToMany('Product', 'members_products', 'member_id', 'product_id')
             .withPivot('sort_order')
@@ -87,6 +92,11 @@ const Member = ghostBookshelf.Model.extend({
                 // we know the result set will already be unique and DISTINCT hurts query performance
                 qb.columns('products.*');
             });
+    },
+
+    offerRedemptions() {
+        return this.hasMany('OfferRedemption', 'member_id', 'id')
+            .query('orderBy', 'created_at', 'DESC');
     },
 
     labels: function labels() {
@@ -135,13 +145,13 @@ const Member = ghostBookshelf.Model.extend({
         ghostBookshelf.Model.prototype.emitChange.bind(this)(this, eventToTrigger, options);
     },
 
-    onCreated: function onCreated(model, attrs, options) {
+    onCreated: function onCreated(model, options) {
         ghostBookshelf.Model.prototype.onCreated.apply(this, arguments);
 
         model.emitChange('added', options);
     },
 
-    onUpdated: function onUpdated(model, attrs, options) {
+    onUpdated: function onUpdated(model, options) {
         ghostBookshelf.Model.prototype.onUpdated.apply(this, arguments);
 
         model.emitChange('edited', options);
@@ -328,6 +338,19 @@ const Member = ghostBookshelf.Model.extend({
             });
         }
         return ghostBookshelf.Model.destroy.call(this, unfilteredOptions);
+    },
+
+    getLabelRelations(data, unfilteredOptions = {}) {
+        const query = ghostBookshelf.knex('members_labels')
+            .select('id')
+            .where('label_id', data.labelId)
+            .whereIn('member_id', data.memberIds);
+
+        if (unfilteredOptions.transacting) {
+            query.transacting(unfilteredOptions.transacting);
+        }
+
+        return query;
     }
 });
 

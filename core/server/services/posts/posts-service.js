@@ -1,8 +1,10 @@
+const nql = require('@nexes/nql');
 const {BadRequestError} = require('@tryghost/errors');
 const tpl = require('@tryghost/tpl');
 
 const messages = {
-    invalidEmailRecipientFilter: 'Invalid filter in email_recipient_filter param.'
+    invalidEmailRecipientFilter: 'Invalid filter in email_recipient_filter param.',
+    invalidVisibilityFilter: 'Invalid visibility filter.'
 };
 
 class PostsService {
@@ -60,10 +62,9 @@ class PostsService {
                 }
             }
 
-            const postPublished = model.wasChanged() && (model.get('status') === 'published') && (model.previous('status') !== 'published');
-            const emailOnlyEnabled = model.related('posts_meta').get('email_only') && this.isSet('emailOnlyPosts');
+            const sendEmail = model.wasChanged() && this.shouldSendEmail(model.get('status'), model.previous('status'));
 
-            if (postPublished || emailOnlyEnabled) {
+            if (sendEmail) {
                 let postEmail = model.relations.email;
 
                 if (!postEmail) {
@@ -77,6 +78,40 @@ class PostsService {
         }
 
         return model;
+    }
+
+    async getProductsFromVisibilityFilter(visibilityFilter) {
+        try {
+            const allProducts = await this.models.Product.findAll();
+            const visibilityFilterJson = nql(visibilityFilter).toJSON();
+            const productsData = (visibilityFilterJson.product ? [visibilityFilterJson] : visibilityFilterJson.$or) || [];
+            const tiers = productsData
+                .map((data) => {
+                    return allProducts.find((p) => {
+                        return p.get('slug') === data.product;
+                    });
+                }).filter(p => !!p).map((d) => {
+                    return d.toJSON();
+                });
+            return tiers;
+        } catch (err) {
+            return Promise.reject(new BadRequestError({
+                message: tpl(messages.invalidVisibilityFilter),
+                context: err.message
+            }));
+        }
+    }
+
+    /**
+     * Calculates if the email should be tried to be sent out
+     * @private
+     * @param {String} currentStatus current status from the post model
+     * @param {String} previousStatus previous status from the post model
+     * @returns {Boolean}
+     */
+    shouldSendEmail(currentStatus, previousStatus) {
+        return (['published', 'sent'].includes(currentStatus))
+            && (!['published', 'sent'].includes(previousStatus));
     }
 
     handleCacheInvalidation(model) {
@@ -124,3 +159,5 @@ const getPostServiceInstance = (apiVersion) => {
 };
 
 module.exports = getPostServiceInstance;
+// exposed for testing purposes only
+module.exports.PostsService = PostsService;

@@ -85,6 +85,14 @@ module.exports = {
         return require('./images');
     },
 
+    get media() {
+        return require('./media');
+    },
+
+    get files() {
+        return require('./files');
+    },
+
     get tags() {
         return require('./tags');
     },
@@ -139,5 +147,9 @@ module.exports = {
 
     get snippets() {
         return require('./snippets');
+    },
+
+    get custom_theme_settings() {
+        return require('./custom-theme-settings');
     }
 };

@@ -1,7 +1,11 @@
-const i18n = require('../../../shared/i18n');
+const tpl = require('@tryghost/tpl');
 const errors = require('@tryghost/errors');
 const models = require('../../models');
-const ALLOWED_INCLUDES = ['authors', 'tags'];
+const ALLOWED_INCLUDES = ['authors', 'tags', 'tiers'];
+
+const messages = {
+    postNotFound: 'Post not found.'
+};
 
 module.exports = {
     docName: 'email_post',
@@ -12,7 +16,7 @@ module.exports = {
             'include'
         ],
         data: [
-            'slug'
+            'uuid'
         ],
         validation: {
             options: {
@@ -21,7 +25,7 @@ module.exports = {
                 }
             },
             data: {
-                slug: {
+                uuid: {
                     required: true
                 }
             }
@@ -31,7 +35,7 @@ module.exports = {
 
             if (!model) {
                 throw new errors.NotFoundError({
-                    message: i18n.t('errors.api.posts.postNotFound')
+                    message: tpl(messages.postNotFound)
                 });
             }
 

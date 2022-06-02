@@ -26,11 +26,11 @@ class EmailRouter extends ParentRouter {
         this.router().use(this._prepareContext.bind(this));
 
         // REGISTER: actual email route
-        this.mountRoute(urlUtils.urlJoin(this.route.value, ':slug', ':options?'), controllers.email);
+        this.mountRoute(urlUtils.urlJoin(this.route.value, ':uuid', ':options?'), controllers.email);
     }
 
     /**
-     * @description Prepare context for further middlewares/controllers.
+     * @description Prepare context for further middleware/controllers.
      * @param {Object} req
      * @param {Object} res
      * @param {Function} next

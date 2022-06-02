@@ -235,6 +235,10 @@
             "defaultValue": "public",
             "type": "string"
         },
+        "default_content_visibility_tiers": {
+            "defaultValue": "[]",
+            "type": "array"
+        },
         "members_signup_access": {
             "defaultValue": "all",
             "validations": {
@@ -397,7 +401,7 @@
     },
     "amp": {
         "amp": {
-            "defaultValue": "true",
+            "defaultValue": "false",
             "validations": {
                 "isIn": [["true", "false"]]
             },
@@ -590,6 +594,14 @@
         "editor_default_email_recipients_filter": {
             "defaultValue": "all",
             "type": "string"
+        },
+        "editor_is_launch_complete": {
+            "defaultValue": "false",
+            "validations": {
+                "isEmpty": false,
+                "isIn": [["true", "false"]]
+            },
+            "type": "boolean"
         }
     }
 }
