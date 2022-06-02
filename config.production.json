@@ -5,6 +5,6 @@
     "port": 3306,
     "user": "joe",
     "password": "Test123456789",
-    "database": "proddb"
+    "database": "mysql"
   }
 }
